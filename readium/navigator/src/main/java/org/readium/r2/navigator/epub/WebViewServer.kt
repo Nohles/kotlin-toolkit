@@ -147,7 +147,6 @@ internal class WebViewServer(
 
         val mediaType = link?.mediaType
             ?: mediaTypeFromUrl(url)
-
         val href = link?.url() ?: url // Just in case some resource is not in the manifest
 
         return servePublicationResourceWithHref(
@@ -204,7 +203,10 @@ internal class WebViewServer(
             "Accept-Ranges" to "bytes"
         )
 
-        val stream = resource.asInputStream()
+        val length = resource.asInputStream().use { it.available() }
+        val longRange = range?.toLongRange(length.toLong())
+        val stream = resource.asInputStream(longRange)
+
         if (range == null) {
             return WebResourceResponse(
                 mediaType?.toString(),
@@ -215,9 +217,8 @@ internal class WebViewServer(
                 stream
             )
         } else { // Byte range request
-            val length = stream.available()
-            val longRange = range.toLongRange(length.toLong())
-            headers["Content-Range"] = "bytes ${longRange.first}-${longRange.last}/$length"
+            val contentRange = checkNotNull(longRange)
+            headers["Content-Range"] = "bytes ${contentRange.first}-${contentRange.last}/$length"
             // Content-Length will automatically be filled by the WebView using the Content-Range header.
             // headers["Content-Length"] = (longRange.last - longRange.first + 1).toString()
             // Weirdly, the WebView will call itself stream.skip to skip to the requested range.
